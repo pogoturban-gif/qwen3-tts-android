@@ -1,23 +1,10 @@
-name: Android Release
+name: Build Android APK
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version, for example 0.1.0. Defaults to the tag name without v."
-        required: false
-        type: string
-      prerelease:
-        description: "Mark the GitHub release as a prerelease."
-        required: false
-        default: false
-        type: boolean
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-android:
@@ -30,75 +17,33 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Initialize build submodules
-        run: |
-          git submodule sync --recursive
-          git submodule update --init --recursive --depth=1
-
-      - name: Resolve release version
-        run: |
-          version="${{ inputs.version }}"
-          if [ -z "$version" ]; then
-            if [ "${{ github.ref_type }}" = "tag" ]; then
-              version="${{ github.ref_name }}"
-            else
-              version="0.1.${{ github.run_number }}"
-            fi
-          fi
-          release_version="${version#v}"
-          echo "RELEASE_VERSION=$release_version" >> "$GITHUB_ENV"
-
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-            - name: Set up Android SDK
+      - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools'
-
-      - name: Install Android build tools
-        run: |
-          sdkmanager --install \
-            "platforms;android-36" \
-            "build-tools;36.0.0" \
-            "ndk;27.2.12479018" \
-            "cmake;3.22.1"
+          packages: >-
+            platform-tools
+            platforms;android-36
+            build-tools;36.0.0
+            ndk;27.2.12479018
+            cmake;3.22.1
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build release APK
+      - name: Build APK
         run: |
           chmod +x ./gradlew
-          ./gradlew :app:assembleRelease
+          ./gradlew :app:assembleRelease --no-daemon
 
-      - name: Collect APK
-        run: |
-          mkdir -p artifacts
-          cp app/build/outputs/apk/release/app-release.apk \
-            "artifacts/qwen3-tts-android-${RELEASE_VERSION}-arm64-v8a.apk"
-          ls -lh artifacts
-
-      - name: Upload workflow artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: qwen3-tts-android-${{ env.RELEASE_VERSION }}
-          path: artifacts/*.apk
-
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ env.RELEASE_VERSION }}
-          target_commitish: ${{ github.sha }}
-          name: Qwen3 TTS Android ${{ env.RELEASE_VERSION }}
-          body: |
-            Android APK:
-
-            - `qwen3-tts-android-${{ env.RELEASE_VERSION }}-arm64-v8a.apk`
-
-            The APK is the Android release build for arm64 devices.
-          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
-          files: artifacts/*.apk
+          name: qwen3-tts-android-arm64-v8a
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
